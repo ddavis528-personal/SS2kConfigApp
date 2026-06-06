@@ -48,6 +48,7 @@ class BLEDataManager {
   }
 
   static void clearDataForDevice(BluetoothDevice device) {
+    _dataMap[device.remoteId.str]?.dispose();
     _dataMap.remove(device.remoteId.str);
   }
 }
@@ -412,9 +413,7 @@ class BLEData {
     };
   }
 
-  BluetoothCharacteristic getMyCharacteristic(BluetoothDevice device) {
-    late BluetoothCharacteristic _char;
-
+  BluetoothCharacteristic? getMyCharacteristic(BluetoothDevice device) {
     if (device.isConnected) {
       _discoverServices(device);
       if (services.length > 1) {
@@ -423,11 +422,11 @@ class BLEData {
     }
     if (_myCharacteristic != null) {
       charReceived.value = true;
-      _char = _myCharacteristic!;
+      return _myCharacteristic!;
     } else {
       charReceived.value = false;
+      return null;
     }
-    return _char;
   }
 
   Future _discoverServices(BluetoothDevice device,
@@ -947,7 +946,7 @@ class BLEData {
         final list = new Uint64List.fromList([t]);
         final bytes = new Uint8List.view(list.buffer);
         final out =
-            bytes.map((b) => '0x${b.toRadixString(32).padLeft(2, '0')}');
+            bytes.map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}');
         print('bytes: ${out}');
         value = [
           0x02,
@@ -972,7 +971,7 @@ class BLEData {
           // Convert each entry in the row to its little-endian byte representation
           for (int? entry in row) {
             int valueToConvert = entry ?? intMinValue;
-            final list = Uint16List.fromList([valueToConvert]);
+            final list = Int16List.fromList([valueToConvert]);
             final bytes = Uint8List.view(list.buffer);
             final out =
                 bytes.map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}');
@@ -1008,15 +1007,16 @@ class BLEData {
 
   Future<void> write(BluetoothDevice device, List<int> value) async {
     if (this.isSimulated) return;
-    if (this.getMyCharacteristic(device).device.isConnected) {
+    final char = this.getMyCharacteristic(device);
+    if (char != null && char.device.isConnected) {
       try {
-        await this.getMyCharacteristic(device).write(value);
+        await char.write(value);
       } catch (e) {
         Snackbar.show(ABC.c, "Failed to write to SmartSpin2k $e",
             success: false);
       }
     } else {
-      Snackbar.show(ABC.c, "Failed to write to SmartSpin2k - Net Connected",
+      Snackbar.show(ABC.c, "Failed to write to SmartSpin2k - Not Connected",
           success: false);
     }
   }
@@ -1028,8 +1028,12 @@ class BLEData {
     _ensureCachedMap();
 
     _notifySubscription?.cancel();
-    _notifySubscription =
-        this.getMyCharacteristic(device).onValueReceived.listen((value) {
+    final char = this.getMyCharacteristic(device);
+    if (char == null) {
+      subscribed = false;
+      return;
+    }
+    _notifySubscription = char.onValueReceived.listen((value) {
       try {
         if (value.isEmpty) return;
 
@@ -1211,5 +1215,6 @@ class BLEData {
   /// Dispose of resources
   void dispose() {
     _characteristicChangeController.close();
+    _logStreamController.close();
   }
 }
