@@ -80,16 +80,21 @@ class WifiOTA {
       );
       request.files.add(multipartFile);
 
-      // Send request and wait only for headers
+      // Send request and track progress while waiting for response
       print('WiFi OTA: Sending firmware...');
       var prog = 0.1;
-      // Update progress before send
-      request.send();
+      final sendFuture = request.send();
 
       while (prog < 1) {
         onProgress(prog);
         prog = prog + .01;
         await Future.delayed(Duration(milliseconds: 400));
+      }
+
+      final response = await sendFuture;
+      if (response.statusCode != 200) {
+        print('WiFi OTA: Upload failed, HTTP status: ${response.statusCode}');
+        return false;
       }
       print('WiFi OTA: Upload successful, device will reboot');
       return true;

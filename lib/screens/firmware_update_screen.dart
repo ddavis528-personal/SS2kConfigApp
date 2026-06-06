@@ -59,8 +59,7 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
   final BleRepository bleRepo = BleRepository();
   String _builtinFirmwareVersion = '';
 
-  Timer _loadingTimer =
-      Timer.periodic(Duration(seconds: 30), (_loadingTimer) {});
+  Timer? _loadingTimer;
 
   List<FirmwareRelease> _availableReleases = [];
   FirmwareRelease? _selectedRelease;
@@ -686,7 +685,7 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
     }
 
     // Close verifying dialog
-    Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
 
     return verifiedVersion;
   }
@@ -883,7 +882,7 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
                                       bool confirm = await _showConfirmDialog();
                                       if (confirm) {
                                         WakelockPlus.enable();
-                                        startFirmwareUpdate(RELEASE,
+                                        await startFirmwareUpdate(RELEASE,
                                             release: _selectedRelease);
                                       }
                                     },
@@ -905,7 +904,7 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
                                   bool confirm = await _showConfirmDialog();
                                   if (confirm) {
                                     WakelockPlus.enable();
-                                    startFirmwareUpdate(PICKER);
+                                    await startFirmwareUpdate(PICKER);
                                   }
                                 },
                                 child: const Text(

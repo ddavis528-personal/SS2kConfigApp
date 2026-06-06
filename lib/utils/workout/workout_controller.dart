@@ -121,6 +121,7 @@ class WorkoutController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    progressTimer?.cancel();
     super.dispose();
   }
 
