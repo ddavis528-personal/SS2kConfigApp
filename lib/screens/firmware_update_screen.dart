@@ -122,7 +122,7 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
     progressSubscription?.cancel();
     charSubscription?.cancel();
     this.bleData.charReceived.removeListener(_charListener);
-    _loadingTimer.cancel();
+    _loadingTimer?.cancel();
     WakelockPlus.disable();
     super.dispose();
   }
