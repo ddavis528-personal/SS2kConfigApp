@@ -17,6 +17,16 @@ instead of silently overwriting a previous one.
 
 ### Changed
 
+## [1.2.5+60] - 2026-06-28
+
+### Fixed
+- Fixed `FirmwareUpdateScreen._initialize()` unconditionally accessing the `late` fields `firmwareDataCharacteristic`/`firmwareControlCharacteristic` (guarded only by `isSimulated`), even though they're only assigned when `configAppCompatibleFirmware` is true; opening the screen on a device without BLE-OTA-compatible firmware threw a `LateInitializationError`. Now also gated on `configAppCompatibleFirmware`.
+- Fixed an out-of-bounds `RangeError` risk in the `powerTableData` decode loop in `bledata.dart`, which read 16-bit values without checking that a full 2-byte pair remained in the buffer.
+
+### Added
+
+### Changed
+
 ## [1.2.4+59] - 2026-06-28
 
 ### Fixed

@@ -1164,7 +1164,7 @@ class BLEData {
                 if (cadenceRow >= 0 &&
                     cadenceRow < this.powerTableData.length) {
                   List<int?> row = [];
-                  for (int i = 3; i < value.length; i += 2) {
+                  for (int i = 3; i + 1 < value.length; i += 2) {
                     if (data.getInt16(i, Endian.little) == -32768) {
                       row.add(null);
                     } else {
