@@ -19,6 +19,8 @@ jobs:
       version: ${{ steps.set_version.outputs.version }}
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       # Download and extract latest SmartSpin2k firmware.bin from GitHub release
       - name: Download and extract latest SmartSpin2k firmware
