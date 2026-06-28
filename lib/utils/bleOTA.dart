@@ -12,7 +12,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:file_picker/file_picker.dart';
 
 
 // Abstract class defining the structure of an OTA package
@@ -83,11 +82,10 @@ class Esp32OtaPackage implements OtaPackage {
       if (firmwareType == 1) {
         // Built-in firmware
         binaryChunks = await _readBinaryFile(binFilePath, chunkSize);
-      } else if (firmwareType == 2) {
-        // File picker
-        binaryChunks = await _getFirmwareFromPicker(chunkSize);
       } else {
-        // URL or Beta firmware - read from the downloaded file
+        // File picker, URL, or Beta firmware - the caller already resolved
+        // binFilePath (including running the file picker, for type 2), so
+        // just read it from the filesystem.
         binaryChunks = await _readLocalFile(binFilePath, chunkSize);
       }
     } else {
@@ -167,50 +165,4 @@ class Esp32OtaPackage implements OtaPackage {
     return chunks;
   }
 
-  // Get firmware based on firmwareType
-  Future<List<Uint8List>> getFirmware(int firmwareType, int chunkSize, {String? binFilePath}) {
-    if (firmwareType == 2) {
-      print("in package MTU size is ${chunkSize}");
-      return _getFirmwareFromPicker(chunkSize);
-    } else if (firmwareType == 1 && binFilePath != null && binFilePath.isNotEmpty) {
-      return _readBinaryFile(binFilePath, chunkSize);
-    } else if (binFilePath != null && binFilePath.isNotEmpty) {
-      return _readLocalFile(binFilePath, chunkSize);
-    } else {
-      return Future.value([]);
-    }
-  }
-
-  // Get firmware chunks from file picker
-  Future<List<Uint8List>> _getFirmwareFromPicker(int chunkSize) async {
-    print("MTU size in fie picker is ${chunkSize}");
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['bin'],
-    );
-
-    if (result == null || result.files.isEmpty) {
-      return []; // Return an empty list when no file is picked
-    }
-
-    final file = result.files.first;
-
-    try {
-      final firmwareData = await _openFileAndGetFirmwareData(file, chunkSize);
-
-      if (firmwareData.isEmpty) {
-        throw 'Empty firmware data. Please select a valid firmware file.';
-      }
-
-      return firmwareData;
-    } catch (e) {
-      throw 'Error getting firmware data: $e';
-    }
-  }
-
-  // Open file, read bytes, and split into chunks
-  Future<List<Uint8List>> _openFileAndGetFirmwareData(PlatformFile file, int chunkSize) async {
-    final bytes = await File(file.path!).readAsBytes();
-    return _splitIntoChunks(bytes, chunkSize);
-  }
 }
