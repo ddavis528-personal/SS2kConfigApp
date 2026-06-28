@@ -194,8 +194,8 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
   }
 
   Future<void> _initialize() async {
-    //check for demo mode
-    if (!bleData.isSimulated) {
+    //check for demo mode and BLE-OTA-compatible firmware
+    if (!bleData.isSimulated && bleData.configAppCompatibleFirmware) {
       otaPackage = Esp32OtaPackage(this.bleData.firmwareDataCharacteristic,
           this.bleData.firmwareControlCharacteristic);
       await _progressStreamSubscription();
