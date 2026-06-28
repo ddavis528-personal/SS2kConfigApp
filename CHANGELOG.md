@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Each versioned section below matches the `version:` field in `pubspec.yaml` at
+the time of that release, so every GitHub release gets its own unique tag
+instead of silently overwriting a previous one.
+
 ## [Unreleased]
+
+### Fixed
+
+### Added
+
+### Changed
+
+## [1.2.4+59] - 2026-06-28
 
 ### Fixed
 - Fixed `getMyCharacteristic()` returning an uninitialized `late` field (causing a `LateInitializationError`) when no matching characteristic was found; it now returns nullable, and callers null-check before writing or decoding.
