@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `mounted` guard before popping the navigator after firmware update, to avoid use-after-dispose.
 - Fixed `progressTimer` never being cancelled in `WorkoutController.dispose()`, leaking a periodic timer per workout session.
 - `clearDataForDevice()` now disposes notifiers before removal; `dispose()` now closes `_logStreamController`.
+- Fixed "Choose Firmware From Dialog" failing with "device disconnected before the upload could complete" whenever the BLE fallback path was used: `Esp32OtaPackage.updateFirmware()` ignored the already-selected `binFilePath` for picker-sourced firmware and re-opened the system file picker a second time mid-update. It now reads the previously-resolved file directly, like the URL/release flow.
 
 ### Added
 
