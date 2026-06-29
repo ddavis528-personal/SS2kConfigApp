@@ -531,8 +531,9 @@ class WorkoutController extends ChangeNotifier {
         final currentTime = _workoutProgressTime.round();
         final skippedTime = (nextSegmentStart - _workoutProgressTime).round();
 
-        actualPowerPoints[currentTime + 1] = 0;
-        actualPowerPoints[currentTime + skippedTime - 1] = 0;
+        for (int s = currentTime + 1; s <= currentTime + skippedTime; s++) {
+          actualPowerPoints[s] = 0;
+        }
 
         // Accumulate skipped time so elapsed excludes it
         final double skippedDelta = (nextSegmentStart - _workoutProgressTime).clamp(0, double.infinity);

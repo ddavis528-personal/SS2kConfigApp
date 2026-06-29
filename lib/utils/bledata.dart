@@ -625,12 +625,16 @@ class BLEData {
         ftmsData.heartRate = 0;
         ftmsData.speed = 0;
 
-        if (!hasBytes(2)) {
-          return;
+        // Per the FTMS spec, flag bit 0 is "More Data": when set, Instantaneous Speed is NOT
+        // present in the packet at all, so the field (and its offset) must be skipped entirely.
+        if ((flags & 0x1) == 0) {
+          if (!hasBytes(2)) {
+            return;
+          }
+          ftmsData.speed =
+              byteData.getUint16(index, Endian.little) ~/ 100; // resolution 0.01
+          index += 2;
         }
-        ftmsData.speed =
-            byteData.getUint16(index, Endian.little) ~/ 100; // resolution 0.01
-        index += 2;
 
         if ((flags & (1 << 1)) != 0) {
           if (!hasBytes(2)) return;
