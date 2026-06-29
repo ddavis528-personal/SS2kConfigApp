@@ -32,7 +32,9 @@
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
      <uses-permission android:name="android.permission.WAKE_LOCK"/>
      <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
- 
+     <!-- Needed to reliably receive mDNS replies when discovering the device on the local network -->
+     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
      <!-- legacy for Android 11 or lower -->
      <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
      <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
@@ -44,7 +46,11 @@
 
      <application
          android:label="SmartSpin2k"
-         android:icon="@mipmap/launcher_icon">
+         android:icon="@mipmap/launcher_icon"
+         android:usesCleartextTraffic="true">
+         <!-- The device only serves plain HTTP on the local network (firmware push/update
+              endpoints), so cleartext is allowed app-wide rather than maintained as a list
+              of per-device LAN hostnames/IPs. -->
          <activity
              android:name=".MainActivity"
              android:exported="true"

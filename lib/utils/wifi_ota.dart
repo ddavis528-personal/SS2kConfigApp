@@ -2,10 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, MethodChannel;
 import 'package:multicast_dns/multicast_dns.dart';
 
 class WifiOTA {
+  static const MethodChannel _networkChannel =
+      MethodChannel('com.example.ss2kconfigapp/network');
+
   /// Attempts to update firmware via WiFi
   /// Returns true if successful, false if failed
   static Future<bool> updateFirmware({
@@ -19,13 +22,22 @@ class WifiOTA {
     print('WiFi OTA: Using firmware path: $firmwarePath');
 
     final mdnsHost = '$cleanDeviceName.local';
-    String? mdnsIp;
+    // On Android, mDNS replies can be silently dropped by WiFi power-save mode
+    // unless a multicast lock is held for the duration of the lookup.
     if (Platform.isAndroid) {
+      await _acquireMulticastLock();
+    }
+    String? mdnsIp;
+    try {
       mdnsIp = await _resolveMdnsAddress(mdnsHost);
       if (mdnsIp != null) {
         print('WiFi OTA: mDNS resolved $mdnsHost to $mdnsIp');
       } else {
         print('WiFi OTA: mDNS lookup for $mdnsHost returned no address');
+      }
+    } finally {
+      if (Platform.isAndroid) {
+        await _releaseMulticastLock();
       }
     }
 
@@ -118,6 +130,22 @@ class WifiOTA {
     } catch (e) {
       print('WiFi OTA: Failed to reach $baseUrl: $e');
       return false;
+    }
+  }
+
+  static Future<void> _acquireMulticastLock() async {
+    try {
+      await _networkChannel.invokeMethod('acquireMulticastLock');
+    } catch (e) {
+      print('WiFi OTA: Failed to acquire multicast lock: $e');
+    }
+  }
+
+  static Future<void> _releaseMulticastLock() async {
+    try {
+      await _networkChannel.invokeMethod('releaseMulticastLock');
+    } catch (e) {
+      print('WiFi OTA: Failed to release multicast lock: $e');
     }
   }
 
