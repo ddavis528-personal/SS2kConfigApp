@@ -91,7 +91,7 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
     } else {
       this.bleData.charReceived.addListener(_charListener);
     }
-    _loadingTimer = Timer.periodic(Duration(microseconds: 100), (_fwCheck) {
+    _loadingTimer = Timer.periodic(Duration(milliseconds: 100), (_fwCheck) {
       if (this.bleData.firmwareVersion.value == "") {
         return;
       } else {
