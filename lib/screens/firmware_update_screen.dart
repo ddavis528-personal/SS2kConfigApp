@@ -16,6 +16,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/bleOTA.dart';
 import '../utils/wifi_ota.dart';
@@ -78,6 +79,11 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
   bool _uploadCompleteDialogShown = false;
   bool updatingFirmware = false;
 
+  // Optional user-supplied device IP for WiFi OTA. Persisted so it survives app
+  // restarts; used as the first candidate when reaching the device over WiFi.
+  static const String _manualIpPrefsKey = 'wifiOtaManualIp';
+  final TextEditingController _manualIpController = TextEditingController();
+
   final int BINARY = 1;
   final int PICKER = 2;
   final int RELEASE = 3;
@@ -105,6 +111,16 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
       // Do not show dialog here, let the main control flow handle it
     });
 
+    // Restore the saved manual device IP (if any) for WiFi OTA.
+    SharedPreferences.getInstance().then((prefs) {
+      final savedIp = prefs.getString(_manualIpPrefsKey) ?? '';
+      if (savedIp.isNotEmpty && mounted) {
+        setState(() {
+          _manualIpController.text = savedIp;
+        });
+      }
+    });
+
     // Monitor device disconnection during firmware update
     charSubscription = this.widget.device.connectionState.listen((state) {
       // If progress is high (>95%), assume disconnect is due to reboot/completion
@@ -123,8 +139,14 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
     charSubscription?.cancel();
     this.bleData.charReceived.removeListener(_charListener);
     _loadingTimer?.cancel();
+    _manualIpController.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  Future<void> _saveManualIp() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_manualIpPrefsKey, _manualIpController.text.trim());
   }
 
   // Method to display dialog based on firmware update success or failure
@@ -468,10 +490,19 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
         binFilePath = 'assets/firmware.bin';
       }
 
+      // Persist the manual IP (if entered) so it's remembered for next time.
+      await _saveManualIp();
+
+      // advName is only populated from a fresh scan; on a direct reconnect it can
+      // be empty, which previously produced unreachable URLs like "http://.local"
+      // and guaranteed the WiFi path failed. Fall back to platformName.
+      final String otaDeviceName = widget.device.advName.isNotEmpty ? widget.device.advName : widget.device.platformName;
+
       // Try WiFi update first
       final bool wifiSuccess = await WifiOTA.updateFirmware(
-        deviceName: widget.device.advName,
+        deviceName: otaDeviceName,
         firmwarePath: binFilePath,
+        manualIp: _manualIpController.text,
         onProgress: (progress) {
           setState(() {
             _progress = progress;
@@ -862,6 +893,23 @@ class _FirmwareUpdateState extends State<FirmwareUpdateScreen> {
                     ),
                   ),
                   SizedBox(height: 20),
+                  // Optional manual device IP for WiFi OTA. When set, it is tried
+                  // before mDNS/hostname discovery, so updates work even when the
+                  // phone cannot resolve the device's ".local" name.
+                  TextField(
+                    controller: _manualIpController,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                      labelText: 'Device IP for WiFi update (optional)',
+                      helperText:
+                          'e.g. 192.168.1.42 — find it on the SmartSpin2k web page. Leave blank to discover automatically.',
+                      helperMaxLines: 2,
+                    ),
+                    onSubmitted: (_) => _saveManualIp(),
+                  ),
+                  SizedBox(height: 12),
                   Builder(
                     builder: (context) {
                       final isNarrow = MediaQuery.of(context).size.width < 600;

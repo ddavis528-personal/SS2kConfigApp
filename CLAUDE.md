@@ -5,7 +5,7 @@
 Flutter mobile app (iOS + Android) for configuring and controlling **SmartSpin2k** devices over BLE. SmartSpin2k is a DIY ESP32-based device that motorizes the resistance knob on any spin bike, turning it into a smart trainer compatible with Zwift, TrainerRoad, etc.
 
 **Companion firmware repo:** `ddavis528-personal/smartspin2k`
-**Current app version:** `1.2.5+60` (`pubspec.yaml`)
+**Current app version:** `1.2.6+61` (`pubspec.yaml`)
 **Primary branch:** `develop`
 
 ---
@@ -69,6 +69,11 @@ lib/
 ---
 
 ## Recent Changes (as of 2026-07-18)
+
+### WiFi OTA overhaul (1.2.6+61)
+- **iOS**: `Info.plist` now declares `NSLocalNetworkUsageDescription`, `NSBonjourServices` (`_http._tcp`), and `NSAppTransportSecurity → NSAllowsLocalNetworking`. Without these, iOS 14+ silently blocked all local-network traffic and WiFi OTA could never succeed (always fell back to BLE). iOS prompts for Local Network permission on first use.
+- `wifi_ota.dart`: skips in-app `MDnsClient` on iOS (needs a multicast entitlement the app doesn't hold); iOS resolves `.local` natively. Accepts optional `manualIp` tried as the first candidate. Progress loop completes when the device responds instead of a fixed ~36 s animation. Reachability timeout 15 s → 6 s per candidate.
+- `firmware_update_screen.dart`: manual "Device IP for WiFi update" field (persisted via `SharedPreferences`, key `wifiOtaManualIp`); device name falls back from `advName` (empty on direct reconnect) to `platformName`.
 
 ### `lib/screens/shifter_screen.dart`
 - Added `_maxGearNotifier` + `_computeMaxGear()`: shows `gear/maxGear` (e.g. `8/16`) in the gear display; shows `?` until homing data arrives.

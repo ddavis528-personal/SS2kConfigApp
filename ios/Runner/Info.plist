@@ -82,5 +82,23 @@
 	<array>
 		<string>strava</string>
 	</array>
+	<!-- Required for WiFi OTA: without this key iOS 14+ silently blocks all traffic to
+	     devices on the local network and the permission prompt never appears, so the
+	     firmware update always fell back to Bluetooth. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SmartSpin2k firmware updates are sent directly to the device over your local WiFi network, which is much faster than Bluetooth.</string>
+	<!-- Bonjour service types the app may resolve when locating the device (_http._tcp
+	     covers the SmartSpin2k web/OTA server advertised via mDNS). -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+	<!-- The SmartSpin2k only serves plain HTTP on the local network; allow cleartext for
+	     local networking without weakening ATS for internet hosts. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
