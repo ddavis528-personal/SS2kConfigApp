@@ -86,13 +86,59 @@ lib/
 
 ---
 
-## Known Issues / Next Steps
+## Bug History and Current Status
 
-### Potential improvements
-- **Gear ceiling check in `shift()`**: Currently only floors at 0. If desired, could also cap at `maxGear` so pressing up past max is a no-op (symmetric with the floor). Currently the firmware caps it, so this is cosmetic.
-- **Max gear display before homing**: Shows `?` until the device has been homed. Could show a prompt or explanation in the UI.
-- **Dial/progress visualization**: The gear display currently shows `N/M` text. A future enhancement would be a visual arc or progress indicator from min to max resistance.
-- **`requestSetting` for hMin/hMax on screen open**: `shifter_screen.dart` already requests `shiftStepVname` on init; it could also explicitly request `BLE_hMinVname` and `BLE_hMaxVname` to populate max gear faster on first open.
+### Issue 1: Gear number not updating in app / virtual shifter unreliable
+**Symptoms (reported):** Gear number in the app didn't change when shifting from the device's physical buttons. Virtual shifter buttons in the app worked inconsistently — sometimes the gear display updated briefly then reverted, sometimes it didn't respond at all.
+
+**Root cause diagnosed:** Two interacting BLE subscription races:
+1. `getMyCharacteristic()` was fire-and-forgetting `_findChar()` on every call. This periodically replaced `_myCharacteristic` with a newly-discovered instance while `_notifySubscription` was still attached to the old one, silently killing all incoming BLE indications.
+2. `device_header.dart`'s `_refreshDeviceInfo()` was calling `device.discoverServices()` directly, bypassing the `_discoverServicesCompleter` lock and causing the same stale-characteristic problem on reconnect.
+
+**Fixes applied:** `bledata.dart` `_findCharCompleter` guard + removed side-effect from `getMyCharacteristic()`; `device_header.dart` direct `discoverServices()` call removed.
+
+**Status after fix:** Physical shifter reliably updates the app gear display. Virtual buttons work after the device has been calibrated (first pedal stroke).
+
+---
+
+### Issue 2: Virtual shifter underflow — motor drives to max resistance
+**Symptoms (reported, after Issue 1 fix):** Pressing the down button on the virtual shifter at gear 0 caused the motor to drive toward (and sometimes beyond) maximum resistance. This happened before calibration. After the first calibration (pedaling), virtual buttons worked but underflow still occurred at gear 0.
+
+**Root cause:** `shift(-1)` computed `next = 0 + (-1) = -1` and wrote `-1` to the firmware. The firmware's `bytes_to_u16` decoded this as a large positive number, bypassing the bounds check in `FTMSModeShiftModifier()`.
+
+**Fix applied:** Added `if (next < 0) return;` in `shift()` before writing to the device (`shifter_screen.dart:185`).
+
+**Status: FIXED, NOT YET TESTED ON HARDWARE.** Build `ae7eb4a` is on `develop` and CI passed; no physical device test has been done.
+
+---
+
+### Issue 3: Max gear denominator always showing "0"
+**Symptoms (reported, after Issue 1 fix):** The gear display showed `8/0` (or similar) instead of `8/16`. The denominator was always 0, even after calibration.
+
+**Root cause:** `_computeMaxGear()` guarded with `(hMax == 0 && hMin == 0)` to detect "not yet homed". But the firmware uses `INT32_MIN` (-2147483648) as the sentinel before homing, not 0. So `INT32_MIN - INT32_MIN = 0`, which divided by `shiftStep` returned `"0"` instead of `"?"`.
+
+**Fix applied:** Changed guard in `_computeMaxGear()` from `(hMax == 0 && hMin == 0)` to `hMax <= hMin` (`shifter_screen.dart:94`).
+
+**Status: FIXED, NOT YET TESTED ON HARDWARE.** Same build as Issue 2.
+
+---
+
+### Issue 4: Virtual buttons don't work before calibration
+**Symptoms:** Before the first pedal stroke (homing not triggered), virtual shifter button presses showed a brief optimistic gear change then immediately reverted. Motor did not move.
+
+**Root cause:** Expected firmware behavior — `FTMSModeShiftModifier()` is gated by `spinDownFlag == 0`. Before homing, `spinDownFlag != 0`, so gear writes are accepted but not executed. The 1-second `_pendingShiftTimer` in the app times out and reverts the optimistic display. After homing (first pedal stroke), this resolves itself.
+
+**Status:** Not a bug. No fix needed, but a UI indicator for "waiting for calibration" would improve UX.
+
+---
+
+## Potential Next Steps
+
+- **Verify Issues 2 & 3 on hardware** — underflow floor and `hMax <= hMin` guard are both in the current build but untested on a physical device.
+- **Gear ceiling cap in `shift()`**: App floors at 0 but doesn't cap at `maxGear`. Firmware enforces the ceiling, so cosmetic — but a symmetric app-side cap (`if (next > maxGear) return;`) would give cleaner UX and prevent brief optimistic overshoots.
+- **Request hMin/hMax on screen open**: `shifter_screen.dart` requests `shiftStepVname` on init but not `BLE_hMinVname`/`BLE_hMaxVname`. Requesting all three would populate max gear faster on first open.
+- **Calibration status indicator**: Show a visual hint when `spinDownFlag != 0` so the user knows to start pedaling before virtual shifting will work.
+- **Dial/progress visualization**: Replace `N/M` text with a visual arc or progress bar from min to max resistance.
 
 ### CI / Build
 - GitHub Actions workflow: `Build and Release Applications` triggers on push to `develop`.
