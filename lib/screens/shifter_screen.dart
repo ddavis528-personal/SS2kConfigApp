@@ -91,7 +91,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
     final hMax = int.tryParse(bleData.getVnameValue(BLE_hMaxVname)) ?? 0;
     final hMin = int.tryParse(bleData.getVnameValue(BLE_hMinVname)) ?? 0;
     final shiftStep = int.tryParse(bleData.getVnameValue(shiftStepVname)) ?? 0;
-    if (shiftStep <= 0 || (hMax == 0 && hMin == 0)) return "?";
+    if (shiftStep <= 0 || hMax <= hMin) return "?";
     return ((hMax - hMin) / shiftStep).round().toString();
   }
 
@@ -182,7 +182,9 @@ class _ShifterScreenState extends State<ShifterScreen> {
       if (current == null) {
         return;
       }
-      String _t = (current + amount).toString();
+      final next = current + amount;
+      if (next < 0) return;
+      final _t = next.toString();
       c = Map<String, Object>.from(c)..["value"] = _t;
       this.bleData.writeToSS2k(this.widget.device, c);
       _pendingShifterValue = _t;

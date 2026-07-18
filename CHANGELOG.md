@@ -12,6 +12,8 @@ instead of silently overwriting a previous one.
 ## [Unreleased]
 
 ### Fixed
+- Fixed virtual shifter "shift down" sending gear -1 (and beyond) when already at gear 0, which caused the motor to drive toward maximum resistance; the app now floors gear writes at 0.
+- Fixed max-gear denominator always showing `0` on un-homed devices: the guard now checks `hMax <= hMin` instead of `hMax == 0 && hMin == 0`, correctly catching the INT32_MIN sentinel the firmware uses before the first homing run.
 
 ### Added
 
