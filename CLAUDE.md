@@ -139,7 +139,13 @@ lib/
 
 ## Potential Next Steps
 
-- **Verify Issues 2 & 3 on hardware** — underflow floor and `hMax <= hMin` guard are both in the current build but untested on a physical device.
+### Post-test-ride backlog (2026-07-18; app-side items, address after firmware restructuring)
+- **"Calibrating…" state on shifter screen**: during calibration the screen behaves erratically; replace the gear number with a "Calibrating…" message (plus a note that holding a physical shifter button 5 s aborts — firmware side pending) driven by a new calibration-status BLE field.
+- **Gear denominator regressed during ride**: request `BLE_hMinVname`/`BLE_hMaxVname`/`shiftStepVname` on shifter-screen open and handle firmware post-homing notifies; diagnose why it showed nothing on the test ride.
+- **Manual min/max gear trim UI** on the shifter screen writing hMin/hMax (firmware chars 0x2A/0x2B); guard hMin < hMax and block during calibration.
+- **Android WiFi OTA still failing**: first confirm whether the manual-IP path was used; consider native NsdManager platform channel instead of multicast_dns; surface per-candidate failure reasons.
+
+- **Verify Issues 2 & 3 on hardware** — underflow floor and `hMax <= hMin` guard are both in the current build but untested on a physical device. *(Update: verified on the 2026-07-18 test ride — no underflow runaway; but the max-gear denominator regressed, see backlog.)*
 - **Gear ceiling cap in `shift()`**: App floors at 0 but doesn't cap at `maxGear`. Firmware enforces the ceiling, so cosmetic — but a symmetric app-side cap (`if (next > maxGear) return;`) would give cleaner UX and prevent brief optimistic overshoots.
 - **Request hMin/hMax on screen open**: `shifter_screen.dart` requests `shiftStepVname` on init but not `BLE_hMinVname`/`BLE_hMaxVname`. Requesting all three would populate max gear faster on first open.
 - **Calibration status indicator**: Show a visual hint when `spinDownFlag != 0` so the user knows to start pedaling before virtual shifting will work.
