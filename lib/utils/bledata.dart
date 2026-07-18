@@ -278,6 +278,7 @@ class BLEData {
   BluetoothCharacteristic? ftmsControlPointCharacteristic;
   BluetoothCharacteristic? indoorBikeCharacteristic;
   Completer<void>? _discoverServicesCompleter;
+  Completer<void>? _findCharCompleter;
   BluetoothConnectionState connectionState =
       BluetoothConnectionState.disconnected;
   List<BluetoothService> services = [];
@@ -414,12 +415,11 @@ class BLEData {
   }
 
   BluetoothCharacteristic? getMyCharacteristic(BluetoothDevice device) {
-    if (device.isConnected) {
-      _discoverServices(device);
-      if (services.length > 1) {
-        _findChar();
-      }
-    }
+    // Return the already-discovered characteristic.  Do NOT fire _findChar()
+    // here as a side effect: doing so races with the existing _notifySubscription
+    // and replaces _myCharacteristic with a new instance while the subscription
+    // is still attached to the old one, silently killing all incoming notifications.
+    // setupConnection() is the correct place to (re)discover the characteristic.
     if (_myCharacteristic != null) {
       charReceived.value = true;
       return _myCharacteristic!;
@@ -456,6 +456,15 @@ class BLEData {
 
   Future _findChar() async {
     if (this.isSimulated) return;
+
+    // Serialize concurrent callers: a second _findChar() in flight would race
+    // to overwrite _myCharacteristic, leaving _notifySubscription attached to
+    // a stale instance.  Wait for the in-flight call and return early instead.
+    if (_findCharCompleter != null) {
+      await _findCharCompleter!.future;
+      return;
+    }
+    _findCharCompleter = Completer<void>();
     try {
       // custom characteristic
       BluetoothService cs = services.first;
@@ -526,6 +535,9 @@ class BLEData {
       charReceived.value = _myCharacteristic != null;
     } catch (e) {
       charReceived.value = false;
+    } finally {
+      _findCharCompleter!.complete();
+      _findCharCompleter = null;
     }
   }
 

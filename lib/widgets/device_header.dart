@@ -87,11 +87,13 @@ class _DeviceHeaderState extends State<DeviceHeader> {
     try {
       _isRefreshing = true;
 
-      // Wait a bit for the device to stabilize after connection
+      // Wait a bit for the device to stabilize, then request the firmware version.
+      // Do NOT call device.discoverServices() directly here — setupConnection()
+      // already ran it via _discoverServices() and _findChar().  A second
+      // discoverServices() call would replace bleData.services with new
+      // characteristic instances while _notifySubscription is still attached to
+      // the old ones, silently killing all incoming notifications.
       await Future.delayed(Duration(seconds: 1));
-
-      // Discover services to get new firmware version
-      this.bleData.services = await this.widget.device.discoverServices();
       bleData.requestSetting(this.widget.device, fwVname);
     } catch (e) {
       print('Error refreshing device info: $e');
