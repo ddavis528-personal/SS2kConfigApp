@@ -25,6 +25,7 @@ class ShifterScreen extends StatefulWidget {
 class _ShifterScreenState extends State<ShifterScreen> {
   late BLEData bleData;
   late ValueNotifier<String> t;
+  late ValueNotifier<String> _maxGearNotifier;
   Map<String, dynamic> c = const {};
   Timer? _refreshTimer;
   Timer? _pendingShiftTimer;
@@ -44,6 +45,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
     WakelockPlus.enable();
     bleData = BLEDataManager.forDevice(this.widget.device);
     t = ValueNotifier("Connecting");
+    _maxGearNotifier = ValueNotifier(_computeMaxGear());
     _syncShifterValueFromCache();
 
     //special setup for demo mode
@@ -55,6 +57,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
     if (t.value == "Connecting") {
       _requestShifterPosition();
     }
+    bleData.requestSetting(widget.device, shiftStepVname);
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (refreshTimer) {
       if (!mounted) {
@@ -79,8 +82,17 @@ class _ShifterScreenState extends State<ShifterScreen> {
     _connectionStateSubscription?.cancel();
     _characteristicChangeSubscription?.cancel();
     t.dispose();
+    _maxGearNotifier.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  String _computeMaxGear() {
+    final hMax = int.tryParse(bleData.getVnameValue(BLE_hMaxVname)) ?? 0;
+    final hMin = int.tryParse(bleData.getVnameValue(BLE_hMinVname)) ?? 0;
+    final shiftStep = int.tryParse(bleData.getVnameValue(shiftStepVname)) ?? 0;
+    if (shiftStep <= 0 || (hMax == 0 && hMin == 0)) return "?";
+    return ((hMax - hMin) / shiftStep).round().toString();
   }
 
   bool _isValidShifterValue(String value) {
@@ -135,6 +147,10 @@ class _ShifterScreenState extends State<ShifterScreen> {
       // Shifter position from device is authoritative (includes external shifter and accepted app shifts).
       if (event.vName == shifterPositionVname) {
         _syncShifterValueFromCache();
+      }
+
+      if (event.vName == BLE_hMaxVname || event.vName == BLE_hMinVname || event.vName == shiftStepVname) {
+        _maxGearNotifier.value = _computeMaxGear();
       }
 
       // Keep simulated watts in sync with FTMS mode, matching the live updates used by the power table chart
@@ -302,9 +318,15 @@ class _ShifterScreenState extends State<ShifterScreen> {
                       }, height: buttonHeight),
                       Spacer(flex: 1),
                       ValueListenableBuilder<String>(
-                        valueListenable: t,
-                        builder: (context, gearValue, child) {
-                          return _buildGearDisplay(gearValue, fontSize: gearFontSize);
+                        valueListenable: _maxGearNotifier,
+                        builder: (context, maxGear, _) {
+                          return ValueListenableBuilder<String>(
+                            valueListenable: t,
+                            builder: (context, gearValue, child) {
+                              final label = maxGear != "?" ? "$gearValue/$maxGear" : gearValue;
+                              return _buildGearDisplay(label, fontSize: gearFontSize);
+                            },
+                          );
                         },
                       ),
                       Spacer(flex: 1),
