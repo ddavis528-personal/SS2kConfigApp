@@ -16,6 +16,7 @@ instead of silently overwriting a previous one.
 ### Added
 
 ### Changed
+- Shifter screen now displays current gear as `gear/maxGear` (e.g. `8/16`) so the resistance ceiling is always visible. Max gear is derived live from the device's hMin, hMax, and shiftStep values; shows `?` until homing data arrives.
 
 ## [1.2.5+60] - 2026-06-28
 
