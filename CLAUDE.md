@@ -142,6 +142,7 @@ lib/
 ### Post-test-ride backlog (2026-07-18; app-side items, address after firmware restructuring)
 - ~~**"Calibrating…" state on shifter screen**~~ — DONE in 1.2.7+62. Driven by `calibrationStateVname` (char `0x2F`); see `CalibrationState` in `constants.dart`. Shifter buttons are ignored while busy.
 - ~~**Gear denominator regressed during ride**~~ — DONE in 1.2.7+62. Root cause: the firmware notifies hMin/hMax only when they *change*, and that happens at boot before any app is connected, so a later-connecting app never received them. The screen now requests hMin/hMax/shiftStep on open and re-requests after calibration ends.
+- **Gray out the virtual shift buttons while calibrating**: presses are already ignored (`shift()` early-returns on `CalibrationState.isBusy`), but the buttons still render enabled and give tap feedback, so they look broken rather than disabled. Change `_buildShiftButton` to take a nullable `VoidCallback?` and pass `null` while busy — Flutter then renders the disabled style and drops the ripple. Fold into the next shifter-screen change.
 - **Manual min/max gear trim UI** on the shifter screen writing hMin/hMax (firmware chars 0x2A/0x2B); guard hMin < hMax and block during calibration.
 - **Android WiFi OTA still failing**: first confirm whether the manual-IP path was used; consider native NsdManager platform channel instead of multicast_dns; surface per-candidate failure reasons.
 
