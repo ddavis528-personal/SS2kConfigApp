@@ -96,6 +96,7 @@ final String BLE_hMaxVname = "BLE_homingMax";
 final String homingSensitivityVname = "BLE_homingSensitivity";
 final String pTab4pwrVname = "BLE_pTab4pwr";
 final String calibrationStateVname = "BLE_calibrationState";
+final String powerScaleFactorVname = "BLE_powerScaleFactor";
 final String BLE_logStreamVname = "BLE_BLELogging";
 
 /// Calibration status values reported by the firmware on [calibrationStateVname].
@@ -106,6 +107,10 @@ class CalibrationState {
   static const int active = 2; // Homing sequence running now.
   static const int retry = 3; // Last attempt failed; retries when pedaling resumes.
   static const int aborted = 4; // User aborted with a 5 s shifter hold.
+  // Repeated mid-travel knob moves stopped changing power, so the position counter probably no
+  // longer matches the knob (coupler slip). Advisory: the device keeps working, but the travel
+  // limits can no longer be trusted until it is recalibrated.
+  static const int slipSuspected = 5;
 
   /// True while the device is calibrating or waiting to calibrate, i.e. while
   /// gear commands are queued rather than executed.
@@ -708,8 +713,20 @@ final dynamic customCharacteristicFramework = [
     "humanReadableName": "Calibration State",
     "min": 0,
     "max": 4,
-    "textDescription": "Read-only calibration status: 0 idle, 1 pending, 2 active, 3 retrying, 4 aborted.",
+    "textDescription": "Read-only calibration status: 0 idle, 1 pending, 2 active, 3 retrying, 4 aborted, 5 slip suspected.",
     "defaultData": "0"
+  },
+  {
+    "vName": powerScaleFactorVname,
+    "reference": "0x31",
+    "isSetting": false,
+    "settingType": SettingType.advanced,
+    "type": "float",
+    "humanReadableName": "Power Scale Factor (K)",
+    "min": 1,
+    "max": 6,
+    "textDescription": "Read-only. Learned high-end power scale factor. Rises above 1.0 as the device learns that the resistance pad saturates near the top of its travel.",
+    "defaultData": "1.0"
   },
   {
     "vName": BLE_logStreamVname,

@@ -17,6 +17,16 @@ instead of silently overwriting a previous one.
 
 ### Changed
 
+## [1.2.8+63] - 2026-08-01
+
+### Added
+- **Fine-tune the gear range from the shifter screen.** A new tune button opens a sheet that trims the lowest and highest gear a gear at a time ("Easier" / "Harder" rather than raw step counts, which mean nothing to most people). Writes the device's hMin/hMax directly, and the firmware persists them. Guards: at least 3 gears of range is always kept, the lower limit cannot be trimmed below the calibrated floor (that margin is what keeps the knob off the low mechanical stop), and the whole sheet is unavailable during calibration, which overwrites both limits when it completes.
+- **Coupler-slip warning.** When the firmware reports that gear changes have stopped affecting power in mid travel — meaning the position counter probably no longer matches the knob — the shifter screen shows an advisory banner recommending recalibration. The device keeps working; this informs rather than blocks, and a successful calibration clears it.
+- Power Scale Factor (K) is now readable in the app's advanced settings, so you can see whether the firmware's high-end power model is actually training (it rises above 1.0 as the device learns that the pad saturates near the top of travel).
+
+### Changed
+- **Virtual shift buttons are now visibly disabled during calibration** instead of looking active and silently ignoring presses. They were already ignored, but the button still animated on tap, which read as the app being broken rather than the control being unavailable.
+
 ## [1.2.7+62] - 2026-08-01
 
 ### Fixed

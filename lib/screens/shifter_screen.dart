@@ -36,6 +36,8 @@ class _ShifterScreenState extends State<ShifterScreen> {
   StreamSubscription<CharacteristicChangeEvent>? _characteristicChangeSubscription;
   double _chartOpacity = 0.15;
   bool _showOpacityControl = false;
+  // Never let manual trimming squeeze the range below this many gears.
+  static const int _minTrimGears = 3;
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   final GlobalKey<PowerTableChartState> _chartKey = GlobalKey<PowerTableChartState>();
 
@@ -98,6 +100,68 @@ class _ShifterScreenState extends State<ShifterScreen> {
 
   int _readCalibrationState() {
     return int.tryParse(bleData.getVnameValue(calibrationStateVname)) ?? CalibrationState.idle;
+  }
+
+  int _readInt(String vName) => int.tryParse(bleData.getVnameValue(vName)) ?? 0;
+
+  /// Nudges a travel limit by one gear and writes it to the device.
+  ///
+  /// [vName] is BLE_hMinVname or BLE_hMaxVname; [gears] is +1/-1. Guards keep at least
+  /// [_minTrimGears] of usable range so the limits can never cross or collapse, and block edits
+  /// while calibration is running (it overwrites both limits when it finishes).
+  Future<void> _trimLimit(String vName, int gears) async {
+    if (CalibrationState.isBusy(_calibrationStateNotifier.value)) return;
+
+    final shiftStep = _readInt(shiftStepVname);
+    final hMin = _readInt(BLE_hMinVname);
+    final hMax = _readInt(BLE_hMaxVname);
+    if (shiftStep <= 0 || hMax <= hMin) {
+      _showTrimMessage("Calibrate the device before trimming its range.");
+      return;
+    }
+
+    int newMin = hMin;
+    int newMax = hMax;
+    if (vName == BLE_hMinVname) {
+      newMin = hMin + (gears * shiftStep);
+      // Calibration always establishes the floor at 0, leaving a gear of physical backoff below
+      // it. Going lower would spend that margin and drive toward the low mechanical stop, which
+      // is the grinding we just designed out — trim inward only.
+      if (newMin < 0) {
+        _showTrimMessage("Already at the calibrated lower limit.");
+        return;
+      }
+    } else {
+      newMax = hMax + (gears * shiftStep);
+    }
+
+    if ((newMax - newMin) < (_minTrimGears * shiftStep)) {
+      _showTrimMessage("Keep at least $_minTrimGears gears of range.");
+      return;
+    }
+
+    final entry = bleData.customCharacteristic.firstWhere(
+      (c) => c["vName"] == vName,
+      orElse: () => <String, dynamic>{},
+    );
+    if (entry.isEmpty) return;
+
+    final newValue = (vName == BLE_hMinVname) ? newMin : newMax;
+    entry["value"] = newValue.toString();
+    bleData.writeToSS2k(widget.device, entry, s: newValue.toString());
+    // Read back so the display reflects what the device actually accepted rather than what we
+    // asked for. The firmware persists hMin/hMax itself when they change.
+    await Future.delayed(const Duration(milliseconds: 250));
+    await bleData.requestSetting(widget.device, vName);
+    if (mounted) {
+      _maxGearNotifier.value = _computeMaxGear();
+    }
+  }
+
+  void _showTrimMessage(String message) {
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
   }
 
   String _computeMaxGear() {
@@ -227,7 +291,10 @@ class _ShifterScreenState extends State<ShifterScreen> {
     WakelockPlus.enable();
   }
 
-  Widget _buildShiftButton(IconData icon, VoidCallback onPressed, {double height = 150}) {
+  /// A null [onPressed] renders Flutter's disabled style and drops the tap ripple, so a button
+  /// that can't do anything looks that way instead of giving feedback and silently ignoring the
+  /// press (which is how it read during calibration).
+  Widget _buildShiftButton(IconData icon, VoidCallback? onPressed, {double height = 150}) {
     return SizedBox(
       height: height,
       width: height * 0.8,
@@ -311,6 +378,127 @@ class _ShifterScreenState extends State<ShifterScreen> {
     );
   }
 
+  /// Bottom sheet for fine-tuning the calibrated travel limits a gear at a time.
+  ///
+  /// "Easier"/"Harder" rather than raw step counts: the user is trimming how far the knob is
+  /// allowed to turn, and the numbers underneath are meaningless to most people. Rebuilt on
+  /// every characteristic change so the gear count reflects what the device confirmed.
+  void _showRangeTrimSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Future<void> nudge(String vName, int gears) async {
+              await _trimLimit(vName, gears);
+              setSheetState(() {});
+            }
+
+            final shiftStep = _readInt(shiftStepVname);
+            final hMin = _readInt(BLE_hMinVname);
+            final hMax = _readInt(BLE_hMaxVname);
+            final calibrated = shiftStep > 0 && hMax > hMin;
+            final gearCount = calibrated ? ((hMax - hMin) / shiftStep).round() : 0;
+            final busy = CalibrationState.isBusy(_calibrationStateNotifier.value);
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(sheetContext).viewInsets.bottom + 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Fine-tune gear range", style: Theme.of(sheetContext).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  Text(
+                    busy
+                        ? "Not available while the device is calibrating."
+                        : calibrated
+                            ? "Currently $gearCount gears. Trim the ends if the lowest gear is too hard or the highest gear grinds."
+                            : "Calibrate the device before trimming its range.",
+                    style: Theme.of(sheetContext).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 20),
+                  _buildTrimRow(
+                    sheetContext,
+                    label: "Lowest gear",
+                    onEasier: (!busy && calibrated) ? () => nudge(BLE_hMinVname, -1) : null,
+                    onHarder: (!busy && calibrated) ? () => nudge(BLE_hMinVname, 1) : null,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTrimRow(
+                    sheetContext,
+                    label: "Highest gear",
+                    onEasier: (!busy && calibrated) ? () => nudge(BLE_hMaxVname, -1) : null,
+                    onHarder: (!busy && calibrated) ? () => nudge(BLE_hMaxVname, 1) : null,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Changes are saved on the device and survive a reboot. Recalibrating replaces them.",
+                    style: Theme.of(sheetContext).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text("Done"),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTrimRow(BuildContext sheetContext, {required String label, VoidCallback? onEasier, VoidCallback? onHarder}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(child: Text(label, style: Theme.of(sheetContext).textTheme.titleMedium)),
+        OutlinedButton.icon(
+          onPressed: onEasier,
+          icon: const Icon(Icons.remove),
+          label: const Text("Easier"),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: onHarder,
+          icon: const Icon(Icons.add),
+          label: const Text("Harder"),
+        ),
+      ],
+    );
+  }
+
+  /// Advisory banner when the firmware reports that the position counter probably no longer
+  /// matches the knob. The device keeps working, so this informs rather than blocks.
+  Widget _buildSlipBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Theme.of(context).colorScheme.onErrorContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Gear changes stopped affecting power. The coupler may have slipped — recalibration recommended.",
+              style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScaffoldMessenger(
@@ -337,6 +525,22 @@ class _ShifterScreenState extends State<ShifterScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+              // Advisory banner, pinned above the controls so it can't be missed but doesn't
+              // displace the gear display.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _calibrationStateNotifier,
+                  builder: (context, calibrationState, _) {
+                    if (calibrationState != CalibrationState.slipSuspected) {
+                      return const SizedBox.shrink();
+                    }
+                    return _buildSlipBanner();
+                  },
                 ),
               ),
               // Foreground Content
@@ -397,9 +601,16 @@ class _ShifterScreenState extends State<ShifterScreen> {
                         },
                       ),
                       SizedBox(height: 12),
-                      _buildShiftButton(Icons.arrow_upward, () {
-                        shift(1);
-                      }, height: buttonHeight),
+                      // Each control listens to the calibration state separately so the layout
+                      // (which relies on Spacer flex) stays a flat Column.
+                      ValueListenableBuilder<int>(
+                        valueListenable: _calibrationStateNotifier,
+                        builder: (context, calibrationState, _) => _buildShiftButton(
+                          Icons.arrow_upward,
+                          CalibrationState.isBusy(calibrationState) ? null : () => shift(1),
+                          height: buttonHeight,
+                        ),
+                      ),
                       Spacer(flex: 1),
                       ValueListenableBuilder<int>(
                         valueListenable: _calibrationStateNotifier,
@@ -424,9 +635,14 @@ class _ShifterScreenState extends State<ShifterScreen> {
                         },
                       ),
                       Spacer(flex: 1),
-                      _buildShiftButton(Icons.arrow_downward, () {
-                        shift(-1);
-                      }, height: buttonHeight),
+                      ValueListenableBuilder<int>(
+                        valueListenable: _calibrationStateNotifier,
+                        builder: (context, calibrationState, _) => _buildShiftButton(
+                          Icons.arrow_downward,
+                          CalibrationState.isBusy(calibrationState) ? null : () => shift(-1),
+                          height: buttonHeight,
+                        ),
+                      ),
                       Spacer(flex: 1),
                     ],
                   );
@@ -439,6 +655,20 @@ class _ShifterScreenState extends State<ShifterScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    Material(
+                      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+                      shape: const CircleBorder(),
+                      elevation: 4,
+                      child: ValueListenableBuilder<int>(
+                        valueListenable: _calibrationStateNotifier,
+                        builder: (context, calibrationState, _) => IconButton(
+                          tooltip: 'Fine-tune gear range',
+                          icon: const Icon(Icons.tune),
+                          onPressed: CalibrationState.isBusy(calibrationState) ? null : _showRangeTrimSheet,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Material(
                       color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
                       shape: const CircleBorder(),

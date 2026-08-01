@@ -5,7 +5,7 @@
 Flutter mobile app (iOS + Android) for configuring and controlling **SmartSpin2k** devices over BLE. SmartSpin2k is a DIY ESP32-based device that motorizes the resistance knob on any spin bike, turning it into a smart trainer compatible with Zwift, TrainerRoad, etc.
 
 **Companion firmware repo:** `ddavis528-personal/smartspin2k`
-**Current app version:** `1.2.6+61` (`pubspec.yaml`)
+**Current app version:** `1.2.8+63` (`pubspec.yaml`)
 **Primary branch:** `develop`
 
 ---
@@ -142,8 +142,8 @@ lib/
 ### Post-test-ride backlog (2026-07-18; app-side items, address after firmware restructuring)
 - ~~**"Calibrating…" state on shifter screen**~~ — DONE in 1.2.7+62. Driven by `calibrationStateVname` (char `0x2F`); see `CalibrationState` in `constants.dart`. Shifter buttons are ignored while busy.
 - ~~**Gear denominator regressed during ride**~~ — DONE in 1.2.7+62. Root cause: the firmware notifies hMin/hMax only when they *change*, and that happens at boot before any app is connected, so a later-connecting app never received them. The screen now requests hMin/hMax/shiftStep on open and re-requests after calibration ends.
-- **Gray out the virtual shift buttons while calibrating**: presses are already ignored (`shift()` early-returns on `CalibrationState.isBusy`), but the buttons still render enabled and give tap feedback, so they look broken rather than disabled. Change `_buildShiftButton` to take a nullable `VoidCallback?` and pass `null` while busy — Flutter then renders the disabled style and drops the ripple. Fold into the next shifter-screen change.
-- **Manual min/max gear trim UI** on the shifter screen writing hMin/hMax (firmware chars 0x2A/0x2B); guard hMin < hMax and block during calibration.
+- ~~**Gray out the virtual shift buttons while calibrating**~~ — DONE in 1.2.8+63 (`_buildShiftButton` takes `VoidCallback?`; each control has its own `ValueListenableBuilder` on `_calibrationStateNotifier` so the flat Column layout with `Spacer`s is preserved).
+- ~~**Manual min/max gear trim UI**~~ — DONE in 1.2.8+63. `_showRangeTrimSheet()` / `_trimLimit()`; writes hMin/hMax (0x2A/0x2B) one gear at a time. Guards: ≥3 gears of range, hMin never below 0 (the calibrated floor — going lower spends the homing backoff margin and drives at the low stop), disabled while calibrating.
 - **Android WiFi OTA still failing**: first confirm whether the manual-IP path was used; consider native NsdManager platform channel instead of multicast_dns; surface per-candidate failure reasons.
 
 - **Verify Issues 2 & 3 on hardware** — underflow floor and `hMax <= hMin` guard are both in the current build but untested on a physical device. *(Update: verified on the 2026-07-18 test ride — no underflow runaway; but the max-gear denominator regressed, see backlog.)*
