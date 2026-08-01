@@ -17,6 +17,11 @@ instead of silently overwriting a previous one.
 
 ### Changed
 
+## [1.2.9+64] - 2026-08-01
+
+### Added
+- **Cadence Correction Factor** setting (advanced), for bikes that report a lower cadence than you are actually pedaling — which makes workout RPM targets impossible to reach. Set it to the ratio between real and reported cadence (e.g. 1.2 if the app shows 75 when you are really at 90). The firmware applies it to every cadence reading, so it also corrects the RPM sent to Zwift. Changing it resets the power table's confidence, since that table is keyed by cadence.
+
 ## [1.2.8+63] - 2026-08-01
 
 ### Added

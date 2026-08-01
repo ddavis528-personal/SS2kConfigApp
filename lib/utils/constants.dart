@@ -73,6 +73,7 @@ final String deviceNameVname = "BLE_deviceName";
 final String stepperPowerVname = "BLE_stepperPower";
 final String stealthChopVname = "BLE_stealthChop";
 final String powerCorrectionFactorVname = "BLE_powerCorrectionFactor";
+final String cadenceCorrectionFactorVname = "BLE_cadenceCorrectionFactor";
 final String simulateHrVname = "BLE_simulateHr";
 final String simulateWattsVname = "BLE_simulateWatts";
 final String simulateCadVname = "BLE_simulateCad";
@@ -376,6 +377,19 @@ final dynamic customCharacteristicFramework = [
     "max": 2.5,
     "textDescription":
         "Increase or decrease this setting to correct the power reported from your bike. This is typically only needed if your bike is over or under reporting power by a significant amount. IC4/C6 users may want to try a value around 0.7 to .8",
+    "defaultData": "1.0"
+  },
+  {
+    "vName": cadenceCorrectionFactorVname,
+    "reference": "0x32",
+    "isSetting": true,
+    "settingType": SettingType.advanced,
+    "type": "float",
+    "humanReadableName": "Cadence Correction Factor",
+    "min": 0.5,
+    "max": 2.0,
+    "textDescription":
+        "Increase this if your bike reports a lower cadence than you are actually pedaling, which makes workout RPM targets impossible to reach. For example, if the app shows 75 rpm when you are really at 90, use 1.2. The correction is applied to every cadence reading, so it also affects the RPM broadcast to Zwift. Changing it resets the power table's confidence, since the table is keyed by cadence.",
     "defaultData": "1.0"
   },
   {
