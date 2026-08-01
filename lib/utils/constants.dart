@@ -95,7 +95,22 @@ final String BLE_hMinVname = "BLE_homingMin";
 final String BLE_hMaxVname = "BLE_homingMax";
 final String homingSensitivityVname = "BLE_homingSensitivity";
 final String pTab4pwrVname = "BLE_pTab4pwr";
+final String calibrationStateVname = "BLE_calibrationState";
 final String BLE_logStreamVname = "BLE_BLELogging";
+
+/// Calibration status values reported by the firmware on [calibrationStateVname].
+/// Mirrors `enum CalibrationState` in the firmware's Main.h.
+class CalibrationState {
+  static const int idle = 0; // Not calibrating; normal operation.
+  static const int pending = 1; // Queued; waiting for the user to pedal.
+  static const int active = 2; // Homing sequence running now.
+  static const int retry = 3; // Last attempt failed; retries when pedaling resumes.
+  static const int aborted = 4; // User aborted with a 5 s shifter hold.
+
+  /// True while the device is calibrating or waiting to calibrate, i.e. while
+  /// gear commands are queued rather than executed.
+  static bool isBusy(int state) => state == pending || state == active || state == retry;
+}
 
 /// Returns a deep copy of the characteristic framework so each BLEData
 /// instance gets its own independent mutable state.
@@ -683,6 +698,18 @@ final dynamic customCharacteristicFramework = [
     "max": 1,
     "textDescription": "Enable to use the power table for power instead of a power meter",
     "defaultData": "false"
+  },
+  {
+    "vName": calibrationStateVname,
+    "reference": "0x2F",
+    "isSetting": false,
+    "settingType": SettingType.advanced,
+    "type": "int",
+    "humanReadableName": "Calibration State",
+    "min": 0,
+    "max": 4,
+    "textDescription": "Read-only calibration status: 0 idle, 1 pending, 2 active, 3 retrying, 4 aborted.",
+    "defaultData": "0"
   },
   {
     "vName": BLE_logStreamVname,

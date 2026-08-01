@@ -17,6 +17,17 @@ instead of silently overwriting a previous one.
 
 ### Changed
 
+## [1.2.7+62] - 2026-08-01
+
+### Fixed
+- **Max-gear denominator no longer stuck on `?`.** The shifter screen only requested `shiftStep` on open and relied on the firmware notifying hMin/hMax. The firmware only notifies those on *change*, and the change happens at boot — before any app is connected — so an app that connected later never learned the travel limits and the denominator never appeared. The screen now explicitly requests hMin, hMax and shiftStep when it opens, and re-requests them when a calibration run finishes (which is when those values change).
+
+### Added
+- **"Calibrating…" status on the virtual shifter screen.** While the device is calibrating, the gear number is replaced with a spinner and status text instead of a number that jumps around meaninglessly: "Calibrating…" (or "Retrying calibration…" after a failed attempt), plus "Pedal to begin" while the run is waiting on you, and always the reminder that holding either shifter button for 5 seconds cancels. Driven by the firmware's new calibration-status characteristic (`0x2F`).
+- Virtual shift buttons are ignored while calibration is in progress. The firmware queues gear writes during calibration rather than executing them, so a press previously showed an optimistic gear change that silently reverted a second later — and it also cancelled the in-progress homing sweep.
+
+### Changed
+
 ## [1.2.6+61] - 2026-07-18
 
 ### Fixed

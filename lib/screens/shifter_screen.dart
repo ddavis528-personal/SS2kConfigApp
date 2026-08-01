@@ -26,6 +26,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
   late BLEData bleData;
   late ValueNotifier<String> t;
   late ValueNotifier<String> _maxGearNotifier;
+  late ValueNotifier<int> _calibrationStateNotifier;
   Map<String, dynamic> c = const {};
   Timer? _refreshTimer;
   Timer? _pendingShiftTimer;
@@ -46,6 +47,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
     bleData = BLEDataManager.forDevice(this.widget.device);
     t = ValueNotifier("Connecting");
     _maxGearNotifier = ValueNotifier(_computeMaxGear());
+    _calibrationStateNotifier = ValueNotifier(_readCalibrationState());
     _syncShifterValueFromCache();
 
     //special setup for demo mode
@@ -57,7 +59,13 @@ class _ShifterScreenState extends State<ShifterScreen> {
     if (t.value == "Connecting") {
       _requestShifterPosition();
     }
+    // Seed the max-gear denominator and calibration status. All three gear-range values must be
+    // requested: the firmware only notifies them when they change, and that change happens at
+    // boot (before any client is connected), so a later-connecting app never learns them.
     bleData.requestSetting(widget.device, shiftStepVname);
+    bleData.requestSetting(widget.device, BLE_hMinVname);
+    bleData.requestSetting(widget.device, BLE_hMaxVname);
+    bleData.requestSetting(widget.device, calibrationStateVname);
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (refreshTimer) {
       if (!mounted) {
@@ -83,8 +91,13 @@ class _ShifterScreenState extends State<ShifterScreen> {
     _characteristicChangeSubscription?.cancel();
     t.dispose();
     _maxGearNotifier.dispose();
+    _calibrationStateNotifier.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  int _readCalibrationState() {
+    return int.tryParse(bleData.getVnameValue(calibrationStateVname)) ?? CalibrationState.idle;
   }
 
   String _computeMaxGear() {
@@ -153,6 +166,18 @@ class _ShifterScreenState extends State<ShifterScreen> {
         _maxGearNotifier.value = _computeMaxGear();
       }
 
+      if (event.vName == calibrationStateVname) {
+        final previous = _calibrationStateNotifier.value;
+        final current = _readCalibrationState();
+        _calibrationStateNotifier.value = current;
+        // Calibration establishes the travel limits, so refresh the gear range when it ends.
+        if (CalibrationState.isBusy(previous) && !CalibrationState.isBusy(current)) {
+          bleData.requestSetting(widget.device, BLE_hMinVname);
+          bleData.requestSetting(widget.device, BLE_hMaxVname);
+          _requestShifterPosition();
+        }
+      }
+
       // Keep simulated watts in sync with FTMS mode, matching the live updates used by the power table chart
       if (bleData.FTMSmode == 0 || bleData.simulateTargetWatts == false) {
         bleData.simulatedTargetWatts = "";
@@ -174,6 +199,13 @@ class _ShifterScreenState extends State<ShifterScreen> {
 
   shift(int amount) {
     if (_pendingShifterValue != null) {
+      return;
+    }
+
+    // During calibration the firmware queues gear writes instead of executing them (and a
+    // shifter-position change cancels the in-progress homing sweep), so the optimistic update
+    // would just flicker and revert. Ignore the press and keep showing calibration status.
+    if (CalibrationState.isBusy(_calibrationStateNotifier.value)) {
       return;
     }
 
@@ -225,6 +257,56 @@ class _ShifterScreenState extends State<ShifterScreen> {
           fontWeight: FontWeight.bold,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
+      ),
+    );
+  }
+
+  /// Replaces the gear number while the device is calibrating. Includes the abort gesture so
+  /// the user is never stuck watching a run they want to stop.
+  Widget _buildCalibrationDisplay(int calibrationState, {double fontSize = 48}) {
+    final String heading = calibrationState == CalibrationState.retry ? "Retrying calibration…" : "Calibrating…";
+    final String detail = calibrationState == CalibrationState.pending
+        ? "Pedal to begin. Hold either shifter button 5s to cancel."
+        : "Hold either shifter button 5s to cancel.";
+    final double headingSize = fontSize * 0.45;
+
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: fontSize * 0.3, horizontal: fontSize * 0.5),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(fontSize * 0.3),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: headingSize,
+            height: headingSize,
+            child: CircularProgressIndicator(strokeWidth: headingSize * 0.12),
+          ),
+          SizedBox(height: fontSize * 0.25),
+          Text(
+            heading,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: headingSize,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          SizedBox(height: fontSize * 0.15),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: fontSize * 6),
+            child: Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: headingSize * 0.5,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -319,14 +401,24 @@ class _ShifterScreenState extends State<ShifterScreen> {
                         shift(1);
                       }, height: buttonHeight),
                       Spacer(flex: 1),
-                      ValueListenableBuilder<String>(
-                        valueListenable: _maxGearNotifier,
-                        builder: (context, maxGear, _) {
+                      ValueListenableBuilder<int>(
+                        valueListenable: _calibrationStateNotifier,
+                        builder: (context, calibrationState, _) {
+                          // While calibrating, gear commands are queued rather than executed and
+                          // the gear number jumps around meaninglessly. Show status instead.
+                          if (CalibrationState.isBusy(calibrationState)) {
+                            return _buildCalibrationDisplay(calibrationState, fontSize: gearFontSize);
+                          }
                           return ValueListenableBuilder<String>(
-                            valueListenable: t,
-                            builder: (context, gearValue, child) {
-                              final label = maxGear != "?" ? "$gearValue/$maxGear" : gearValue;
-                              return _buildGearDisplay(label, fontSize: gearFontSize);
+                            valueListenable: _maxGearNotifier,
+                            builder: (context, maxGear, _) {
+                              return ValueListenableBuilder<String>(
+                                valueListenable: t,
+                                builder: (context, gearValue, child) {
+                                  final label = maxGear != "?" ? "$gearValue/$maxGear" : gearValue;
+                                  return _buildGearDisplay(label, fontSize: gearFontSize);
+                                },
+                              );
                             },
                           );
                         },

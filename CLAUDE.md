@@ -140,8 +140,8 @@ lib/
 ## Potential Next Steps
 
 ### Post-test-ride backlog (2026-07-18; app-side items, address after firmware restructuring)
-- **"Calibrating…" state on shifter screen**: during calibration the screen behaves erratically; replace the gear number with a "Calibrating…" message (plus a note that holding a physical shifter button 5 s aborts — firmware side pending) driven by a new calibration-status BLE field.
-- **Gear denominator regressed during ride**: request `BLE_hMinVname`/`BLE_hMaxVname`/`shiftStepVname` on shifter-screen open and handle firmware post-homing notifies; diagnose why it showed nothing on the test ride.
+- ~~**"Calibrating…" state on shifter screen**~~ — DONE in 1.2.7+62. Driven by `calibrationStateVname` (char `0x2F`); see `CalibrationState` in `constants.dart`. Shifter buttons are ignored while busy.
+- ~~**Gear denominator regressed during ride**~~ — DONE in 1.2.7+62. Root cause: the firmware notifies hMin/hMax only when they *change*, and that happens at boot before any app is connected, so a later-connecting app never received them. The screen now requests hMin/hMax/shiftStep on open and re-requests after calibration ends.
 - **Manual min/max gear trim UI** on the shifter screen writing hMin/hMax (firmware chars 0x2A/0x2B); guard hMin < hMax and block during calibration.
 - **Android WiFi OTA still failing**: first confirm whether the manual-IP path was used; consider native NsdManager platform channel instead of multicast_dns; surface per-candidate failure reasons.
 
