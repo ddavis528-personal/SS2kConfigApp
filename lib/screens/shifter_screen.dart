@@ -61,13 +61,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
     if (t.value == "Connecting") {
       _requestShifterPosition();
     }
-    // Seed the max-gear denominator and calibration status. All three gear-range values must be
-    // requested: the firmware only notifies them when they change, and that change happens at
-    // boot (before any client is connected), so a later-connecting app never learns them.
-    bleData.requestSetting(widget.device, shiftStepVname);
-    bleData.requestSetting(widget.device, BLE_hMinVname);
-    bleData.requestSetting(widget.device, BLE_hMaxVname);
-    bleData.requestSetting(widget.device, calibrationStateVname);
+    _requestGearRange();
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (refreshTimer) {
       if (!mounted) {
@@ -78,6 +72,13 @@ class _ShifterScreenState extends State<ShifterScreen> {
       // This timer only needs to re-request the shifter position if still pending.
       if (this.widget.device.isConnected && t.value == "Connecting") {
         _requestShifterPosition();
+      }
+      // Keep asking for the travel limits until they arrive. The initial request can be sent
+      // before service discovery has produced a writable characteristic, in which case it is
+      // silently dropped - which left the gear denominator stuck on "?" and the range trim
+      // sheet permanently greyed out even though the device knew its limits.
+      if (this.widget.device.isConnected && _maxGearNotifier.value == "?") {
+        _requestGearRange();
       }
     });
 
@@ -96,6 +97,16 @@ class _ShifterScreenState extends State<ShifterScreen> {
     _calibrationStateNotifier.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  /// Asks the device for everything the gear display and range trim need. All of it must be
+  /// requested rather than waited for: the firmware notifies hMin/hMax only when they *change*,
+  /// and that happens at boot, before any app is connected.
+  void _requestGearRange() {
+    bleData.requestSetting(widget.device, shiftStepVname);
+    bleData.requestSetting(widget.device, BLE_hMinVname);
+    bleData.requestSetting(widget.device, BLE_hMaxVname);
+    bleData.requestSetting(widget.device, calibrationStateVname);
   }
 
   int _readCalibrationState() {
@@ -215,6 +226,7 @@ class _ShifterScreenState extends State<ShifterScreen> {
         _pendingShiftTimer?.cancel();
         t.value = "Connecting";
         _requestShifterPosition();
+        _requestGearRange();
       }
     });
 
@@ -415,7 +427,8 @@ class _ShifterScreenState extends State<ShifterScreen> {
                         ? "Not available while the device is calibrating."
                         : calibrated
                             ? "Currently $gearCount gears. Trim the ends if the lowest gear is too hard or the highest gear grinds."
-                            : "Calibrate the device before trimming its range.",
+                            : "These controls are disabled because the device has not been calibrated yet, so it does not know its own gear range. "
+                                "Pedal steadily for a few seconds to start calibration, then come back here.",
                     style: Theme.of(sheetContext).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 20),
@@ -527,22 +540,6 @@ class _ShifterScreenState extends State<ShifterScreen> {
                   ),
                 ),
               ),
-              // Advisory banner, pinned above the controls so it can't be missed but doesn't
-              // displace the gear display.
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: ValueListenableBuilder<int>(
-                  valueListenable: _calibrationStateNotifier,
-                  builder: (context, calibrationState, _) {
-                    if (calibrationState != CalibrationState.slipSuspected) {
-                      return const SizedBox.shrink();
-                    }
-                    return _buildSlipBanner();
-                  },
-                ),
-              ),
               // Foreground Content
               Positioned.fill(
                 child: LayoutBuilder(builder: (context, constraints) {
@@ -557,6 +554,17 @@ class _ShifterScreenState extends State<ShifterScreen> {
                     mainAxisSize: MainAxisSize.max,
                     children: [
                       SizedBox(height: 8),
+                      // In the layout flow rather than a Positioned overlay: as an overlay it
+                      // covered the metric cards and the up-shift button.
+                      ValueListenableBuilder<int>(
+                        valueListenable: _calibrationStateNotifier,
+                        builder: (context, calibrationState, _) {
+                          if (calibrationState != CalibrationState.slipSuspected) {
+                            return const SizedBox.shrink();
+                          }
+                          return _buildSlipBanner();
+                        },
+                      ),
                       StreamBuilder<CharacteristicChangeEvent>(
                         stream: bleData.characteristicChanges,
                         builder: (context, snapshot) {

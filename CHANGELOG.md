@@ -17,6 +17,13 @@ instead of silently overwriting a previous one.
 
 ### Changed
 
+## [1.2.10+65] - 2026-08-01
+
+### Fixed
+- **Max-gear denominator and the range-trim controls no longer stay stuck when the device already knows its limits.** The screen asked for hMin/hMax/shiftStep once when it opened, which can happen before BLE service discovery has produced a writable characteristic; that request is then silently dropped and nothing ever asked again, so the denominator stayed `?` and the "Fine-tune gear range" buttons stayed greyed out for the whole session. The request is now retried until the values arrive, and re-sent on reconnect.
+- **The coupler-slip warning no longer sits on top of the metric cards and the up-shift button.** It was a `Positioned` overlay pinned to the top of the screen; it is now part of the layout so it occupies its own space.
+- When the range-trim sheet is unavailable because the device has never been calibrated, it now says so and explains that pedaling starts calibration, instead of only greying the buttons out.
+
 ## [1.2.9+64] - 2026-08-01
 
 ### Added
