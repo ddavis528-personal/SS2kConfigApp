@@ -98,6 +98,7 @@ final String homingSensitivityVname = "BLE_homingSensitivity";
 final String pTab4pwrVname = "BLE_pTab4pwr";
 final String calibrationStateVname = "BLE_calibrationState";
 final String powerScaleFactorVname = "BLE_powerScaleFactor";
+final String calibrationCommandVname = "BLE_calibrationCommand";
 final String BLE_logStreamVname = "BLE_BLELogging";
 
 /// Calibration status values reported by the firmware on [calibrationStateVname].
@@ -112,10 +113,26 @@ class CalibrationState {
   // longer matches the knob (coupler slip). Advisory: the device keeps working, but the travel
   // limits can no longer be trusted until it is recalibrated.
   static const int slipSuspected = 5;
+  // Manual fallback, offered after automatic calibration has failed repeatedly.
+  static const int manualSetMin = 6; // Waiting for the rider to reach the lowest position.
+  static const int manualSetMax = 7; // Waiting for the rider to reach the highest position.
+  static const int manualVerify = 8; // Sweeping the new range to confirm it.
+  static const int manualWarning = 9; // Finished and usable, but the sweep fell short.
 
   /// True while the device is calibrating or waiting to calibrate, i.e. while
   /// gear commands are queued rather than executed.
-  static bool isBusy(int state) => state == pending || state == active || state == retry;
+  static bool isBusy(int state) => state == pending || state == active || state == retry || state == manualVerify;
+
+  /// True while the rider is being asked to position the knob by hand. Shifting must stay
+  /// available here — moving the knob is precisely what is being asked for.
+  static bool isManualPrompt(int state) => state == manualSetMin || state == manualSetMax;
+}
+
+/// Commands written to [calibrationCommandVname] to drive manual calibration.
+class CalibrationCommand {
+  static const int continueStep = 1;
+  static const int cancel = 2;
+  static const int startManual = 3;
 }
 
 /// Returns a deep copy of the characteristic framework so each BLEData
@@ -728,6 +745,18 @@ final dynamic customCharacteristicFramework = [
     "min": 0,
     "max": 4,
     "textDescription": "Read-only calibration status: 0 idle, 1 pending, 2 active, 3 retrying, 4 aborted, 5 slip suspected.",
+    "defaultData": "0"
+  },
+  {
+    "vName": calibrationCommandVname,
+    "reference": "0x33",
+    "isSetting": false,
+    "settingType": SettingType.advanced,
+    "type": "int",
+    "humanReadableName": "Calibration Command",
+    "min": 0,
+    "max": 3,
+    "textDescription": "Write-only. Drives the manual calibration steps: 1 continue, 2 cancel, 3 start manual calibration.",
     "defaultData": "0"
   },
   {

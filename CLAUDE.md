@@ -5,7 +5,7 @@
 Flutter mobile app (iOS + Android) for configuring and controlling **SmartSpin2k** devices over BLE. SmartSpin2k is a DIY ESP32-based device that motorizes the resistance knob on any spin bike, turning it into a smart trainer compatible with Zwift, TrainerRoad, etc.
 
 **Companion firmware repo:** `ddavis528-personal/smartspin2k`
-**Current app version:** `1.2.8+63` (`pubspec.yaml`)
+**Current app version:** `1.3.0+66` (`pubspec.yaml`)
 **Primary branch:** `develop`
 
 ---
@@ -143,6 +143,7 @@ lib/
 - ~~**"Calibrating…" state on shifter screen**~~ — DONE in 1.2.7+62. Driven by `calibrationStateVname` (char `0x2F`); see `CalibrationState` in `constants.dart`. Shifter buttons are ignored while busy.
 - ~~**Gear denominator regressed during ride**~~ — DONE in 1.2.7+62. Root cause: the firmware notifies hMin/hMax only when they *change*, and that happens at boot before any app is connected, so a later-connecting app never received them. The screen now requests hMin/hMax/shiftStep on open and re-requests after calibration ends.
 - ~~**Gray out the virtual shift buttons while calibrating**~~ — DONE in 1.2.8+63 (`_buildShiftButton` takes `VoidCallback?`; each control has its own `ValueListenableBuilder` on `_calibrationStateNotifier` so the flat Column layout with `Spacer`s is preserved).
+- ~~**Manual calibration fallback**~~ — DONE in 1.3.0+66. Firmware hands over after `MANUAL_CALIBRATION_AFTER_FAILURES` (3) failed runs; states 6/7 prompt for min/max, 8 is the confirmation sweep, 9 means completed-with-warning. Commands go out on char `0x33` (`CalibrationCommand`). `CalibrationState.isManualPrompt()` deliberately excludes those states from `isBusy()` so shifting stays live while the rider positions the knob.
 - ~~**Manual min/max gear trim UI**~~ — DONE in 1.2.8+63. `_showRangeTrimSheet()` / `_trimLimit()`; writes hMin/hMax (0x2A/0x2B) one gear at a time. Guards: ≥3 gears of range, hMin never below 0 (the calibrated floor — going lower spends the homing backoff margin and drives at the low stop), disabled while calibrating.
 - **Android WiFi OTA still failing**: first confirm whether the manual-IP path was used; consider native NsdManager platform channel instead of multicast_dns; surface per-candidate failure reasons.
 

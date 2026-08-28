@@ -109,6 +109,19 @@ class _ShifterScreenState extends State<ShifterScreen> {
     bleData.requestSetting(widget.device, calibrationStateVname);
   }
 
+  /// Writes one of [CalibrationCommand] to the device to drive manual calibration.
+  void _sendCalibrationCommand(int command) {
+    final entry = bleData.customCharacteristic.firstWhere(
+      (c) => c["vName"] == calibrationCommandVname,
+      orElse: () => <String, dynamic>{},
+    );
+    if (entry.isEmpty) {
+      _showTrimMessage("This firmware doesn't support manual calibration yet.");
+      return;
+    }
+    bleData.writeToSS2k(widget.device, entry, s: command.toString());
+  }
+
   int _readCalibrationState() {
     return int.tryParse(bleData.getVnameValue(calibrationStateVname)) ?? CalibrationState.idle;
   }
@@ -278,9 +291,10 @@ class _ShifterScreenState extends State<ShifterScreen> {
       return;
     }
 
-    // During calibration the firmware queues gear writes instead of executing them (and a
-    // shifter-position change cancels the in-progress homing sweep), so the optimistic update
-    // would just flicker and revert. Ignore the press and keep showing calibration status.
+    // During automatic calibration the firmware queues gear writes instead of executing them
+    // (and a shifter-position change cancels the in-progress homing sweep), so the optimistic
+    // update would just flicker and revert. Manual calibration is the exception: there the whole
+    // point is to move the knob, so shifting stays live.
     if (CalibrationState.isBusy(_calibrationStateNotifier.value)) {
       return;
     }
@@ -343,10 +357,16 @@ class _ShifterScreenState extends State<ShifterScreen> {
   /// Replaces the gear number while the device is calibrating. Includes the abort gesture so
   /// the user is never stuck watching a run they want to stop.
   Widget _buildCalibrationDisplay(int calibrationState, {double fontSize = 48}) {
-    final String heading = calibrationState == CalibrationState.retry ? "Retrying calibration…" : "Calibrating…";
-    final String detail = calibrationState == CalibrationState.pending
-        ? "Pedal to begin. Hold either shifter button 5s to cancel."
-        : "Hold either shifter button 5s to cancel.";
+    final String heading = calibrationState == CalibrationState.retry
+        ? "Retrying calibration…"
+        : calibrationState == CalibrationState.manualVerify
+            ? "Checking your range…"
+            : "Calibrating…";
+    final String detail = calibrationState == CalibrationState.manualVerify
+        ? "Sweeping between the two positions you set."
+        : calibrationState == CalibrationState.pending
+            ? "Pedal to begin. Hold either shifter button 5s to cancel."
+            : "Hold either shifter button 5s to cancel.";
     final double headingSize = fontSize * 0.45;
 
     return Container(
@@ -383,6 +403,99 @@ class _ShifterScreenState extends State<ShifterScreen> {
                 fontSize: headingSize * 0.5,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown while the firmware is asking the rider to position the knob by hand. Automatic
+  /// calibration has already failed repeatedly by this point, so this is the path that actually
+  /// gets the device usable — it deserves the full width of the screen, not a toast.
+  Widget _buildManualCalibrationPanel(int calibrationState, {double fontSize = 48}) {
+    final bool settingMin = calibrationState == CalibrationState.manualSetMin;
+    final double headingSize = (fontSize * 0.42).clamp(18.0, 30.0);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(vertical: fontSize * 0.32, horizontal: fontSize * 0.45),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
+        borderRadius: BorderRadius.circular(fontSize * 0.3),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            settingMin ? "STEP 1 OF 2" : "STEP 2 OF 2",
+            style: TextStyle(
+              fontSize: headingSize * 0.52,
+              letterSpacing: 1.6,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          SizedBox(height: fontSize * 0.16),
+          Text(
+            settingMin ? "Shift to the EASIEST resistance" : "Shift to the HARDEST resistance",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: headingSize,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          SizedBox(height: fontSize * 0.18),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: fontSize * 7),
+            child: Text(
+              settingMin
+                  ? "Use the shift buttons until the knob is as easy as it goes, then confirm."
+                  : "Use the shift buttons until the knob is as hard as you want to ride, then confirm.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: headingSize * 0.48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+          SizedBox(height: fontSize * 0.3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: () => _sendCalibrationCommand(CalibrationCommand.cancel),
+                child: const Text("Cancel"),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: () => _sendCalibrationCommand(CalibrationCommand.continueStep),
+                child: Text(settingMin ? "Set as easiest" : "Set as hardest"),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Advisory shown after a manual calibration whose confirmation sweep fell short. The limits
+  /// are stored and the device works; this just says they are worth a second look.
+  Widget _buildManualWarningBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Theme.of(context).colorScheme.onTertiaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Gear range set manually, but the confirmation sweep didn't finish. The range works — check the top and bottom gears feel right.",
+              style: TextStyle(color: Theme.of(context).colorScheme.onTertiaryContainer),
             ),
           ),
         ],
@@ -559,10 +672,13 @@ class _ShifterScreenState extends State<ShifterScreen> {
                       ValueListenableBuilder<int>(
                         valueListenable: _calibrationStateNotifier,
                         builder: (context, calibrationState, _) {
-                          if (calibrationState != CalibrationState.slipSuspected) {
-                            return const SizedBox.shrink();
+                          if (calibrationState == CalibrationState.slipSuspected) {
+                            return _buildSlipBanner();
                           }
-                          return _buildSlipBanner();
+                          if (calibrationState == CalibrationState.manualWarning) {
+                            return _buildManualWarningBanner();
+                          }
+                          return const SizedBox.shrink();
                         },
                       ),
                       StreamBuilder<CharacteristicChangeEvent>(
@@ -623,6 +739,11 @@ class _ShifterScreenState extends State<ShifterScreen> {
                       ValueListenableBuilder<int>(
                         valueListenable: _calibrationStateNotifier,
                         builder: (context, calibrationState, _) {
+                          // The manual prompts ask the rider to move the knob, so they replace the
+                          // gear readout with instructions and a confirm button.
+                          if (CalibrationState.isManualPrompt(calibrationState)) {
+                            return _buildManualCalibrationPanel(calibrationState, fontSize: gearFontSize);
+                          }
                           // While calibrating, gear commands are queued rather than executed and
                           // the gear number jumps around meaninglessly. Show status instead.
                           if (CalibrationState.isBusy(calibrationState)) {

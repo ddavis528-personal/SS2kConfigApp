@@ -17,6 +17,12 @@ instead of silently overwriting a previous one.
 
 ### Changed
 
+## [1.3.0+66] - 2026-08-25
+
+### Added
+- **Manual calibration.** When automatic calibration fails three times in a row, the device stops retrying and asks you to set the range by hand instead. The shifter screen walks through it: shift to the easiest resistance and confirm, shift to the hardest and confirm, then the device sweeps between the two to check the range is reachable. Shift buttons stay live throughout — moving the knob is the whole point of those steps. The range is saved even if the confirmation sweep falls short, with a note suggesting you check the end gears.
+- Manual calibration can also be started on demand rather than waiting for three failures, by writing the calibration command characteristic (`0x33`).
+
 ## [1.2.10+65] - 2026-08-01
 
 ### Fixed
